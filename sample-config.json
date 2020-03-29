@@ -1,0 +1,27 @@
+{
+    "servers": [],
+    "home_reservation": 0,
+    "growratio": 1.1,
+    "use_targets": true,
+    "targets": [
+        "foodnstuff", "sigma-cosmetics", "joesguns",
+        "hong-fang-tea", "harakiri-sushi",
+        "iron-gym", "nectar-net",
+        "max-hardware", "neo-net", "johnson-ortho",
+        "catalyst", "rho-construction",
+        "galactic-cyber", "snap-fitness", "deltaone", "summit-uni", "lexo-corp",
+        "aevum-police", "silver-helix", "phantasy", "omega-net",
+        "the-hub", "netlink",
+        "crush-fitness", "rothman-uni", "zb-institute", "alpha-ent",
+        "aerocorp", "global-pharm", "unitalife", "defcomm",
+        "icarus", "univ-energy", "solaris", "zeus-med",
+        "infocomm", "nova-med", "taiyang-digital", "microdyne",
+        "fulcrumtech", "helios", "kuai-gong", "blade",
+        "megacorp", "fulcrumassets", "zb-def", "titan-labs",
+        "applied-energetics", "stormtech",
+        "vitalife", "4sigma", "b-and-a", "nwo", "powerhouse-fitness",
+        "ecorp", "omnitek", "clarkinc", "omnia",
+        "millenium-fitness", "syscore", "comptek", "zer0"
+    ],
+    "tmp_path": "/tmp"
+}
