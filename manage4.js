@@ -24,6 +24,7 @@ export async function main(ns) {
     var pargs = argparse(ns, schema)
 
     var memoized_hacklvl = {}
+
     function get_hack_level(s) {
         if (!(s in memoized_hacklvl)) {
             memoized_hacklvl[s] = ns.getServerRequiredHackingLevel(s)
@@ -31,6 +32,7 @@ export async function main(ns) {
         return memoized_hacklvl[s]
     }
     var memoized_minsec = {}
+
     function get_minsec(s) {
         if (!(s in memoized_minsec)) {
             memoized_minsec[s] = ns.getServerMinSecurityLevel(s)
@@ -182,6 +184,9 @@ export async function main(ns) {
             var effgr = growratio
             var old_th_grow = th_grow
             var headroom = mode == "hack" ? 0.6 : 0.9
+            if (cfg.hack_during_grow && mode == "grow") {
+                headroom = 0.75
+            }
             th_grow = Math.min(th_grow, Math.floor(ram_avail * headroom / ns.getScriptRam(sc_grow)))
             effgr = Math.pow(growratio, th_grow / old_th_grow)
             if (mode == "weaken") {
@@ -189,7 +194,9 @@ export async function main(ns) {
             }
             var hack_money = curmon * (effgr - 1) / effgr
             var th_hack = Math.floor(ns.hackAnalyzeThreads(target, hack_money))
-            if (mode != "hack") {
+            if (cfg.hack_during_grow && mode == "grow") {
+                th_hack = Math.floor(th_hack / 2)
+            } else if (mode != "hack") {
                 th_hack = 0
             }
             var th_weak = Math.ceil((th_hack * 0.002 + th_grow * 0.004) / 0.05)
