@@ -1,9 +1,10 @@
 {
     "servers": [],
-    "home_reservation": 0,
-    "growratio": 1.1,
+    "home_reservation": 3,
+    "growratio": 20,
     "use_targets": true,
-    "hack_during_grow": false,
+    "hack_during_grow": true,
+    "filler": [],
     "targets": [
         "foodnstuff", "sigma-cosmetics", "joesguns",
         "hong-fang-tea", "harakiri-sushi",

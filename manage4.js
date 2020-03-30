@@ -22,7 +22,7 @@ export async function main(ns) {
     }
 
     var pargs = argparse(ns, schema)
-
+    var global_filler_id = 0
     var memoized_hacklvl = {}
 
     function get_hack_level(s) {
@@ -220,26 +220,27 @@ export async function main(ns) {
             job.state = "running"
             job.server = server
 
-            if (server != "home") {
+            if (server != "home" && !ns.fileExists(sc_hack, server)) {
                 ns.scp([sc_hack, sc_grow, sc_weak], server)
             }
 
-            if (0 === ns.exec(sc_weak, server, th_weak, target)) {
-                ns.tprint("Failed to exec weak")
+            var global_id = global_filler_id++
+            if (0 === ns.exec(sc_weak, server, th_weak, target, global_id)) {
+                ns.tprint(sprintf("Failed to exec weak(%s,%s,%s,%s)", sc_weak, server, th_weak, target))
                 return
             }
-            if (th_grow > 0 && 0 === ns.exec(sc_grow, server, th_grow, target)) {
+            if (th_grow > 0 && 0 === ns.exec(sc_grow, server, th_grow, target, global_id)) {
                 ns.tprint("Failed to exec grow")
                 return
             }
-            if (th_hack > 0 && 0 === ns.exec(sc_hack, server, th_hack, target)) {
+            if (th_hack > 0 && 0 === ns.exec(sc_hack, server, th_hack, target, global_id)) {
                 ns.tprint("Failed to exec hack")
                 return
             }
             var regex = new RegExp("in ([\\d\\.,]+) seconds")
             var time = -1.0
             for (var i = 0; i < 20; ++i) {
-                var logs = ns.getScriptLogs(sc_weak, server, target)
+                var logs = ns.getScriptLogs(sc_weak, server, target, global_id)
                 for (var k in logs) {
                     var log = logs[k]
                     var match = regex.exec(log)
@@ -264,6 +265,27 @@ export async function main(ns) {
                     hack_money * 1000 / time / req_ram))
             }
         }
+        try {
+            if (cfg.filler) {
+                var script = cfg.filler[0]
+                var fillerram = ns.getScriptRam(script)
+                for (var k in ramlimits) {
+                    var v = ramlimits[k]
+                    var th = Math.floor(v / fillerram)
+                    if (th > 0) {
+                        if (!ns.fileExists(script, k)) {
+                            ns.scp(script, k)
+                        }
+                        var args = [].concat(cfg.filler);
+                        args.splice(1, 0, k, th)
+                        args.push(global_filler_id++)
+                        if (0 === ns.exec.apply(ns, args)) {
+                            ns.tprint(sprintf("Failed to exec filler(%s,%s,%s,...)", script, k, th))
+                        }
+                    }
+                }
+            }
+        } catch (e) {}
         var sleep_until = time_to_load_config
         for (var target in jobs) {
             var job = jobs[target]
@@ -271,12 +293,9 @@ export async function main(ns) {
                 sleep_until = Math.min(sleep_until, job.completedAt + 500)
             }
         }
+        
         var n = sleep_until - ns.getTimeSinceLastAug()
-        if (n > 500) {
-            await ns.sleep(n + 500)
-        } else {
-            await ns.sleep(1000)
-        }
+        await ns.sleep(Math.max(500, Math.min(n + 500, 3000)))
     }
     while (true)
 }
