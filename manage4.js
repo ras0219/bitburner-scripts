@@ -1,5 +1,5 @@
 // manage4.ns
-import { argparse, argparse_help } from "argparse.ns";
+import { argparse } from "argparse.ns";
 
 function loadcfg(ns, config) {
     var cfg = JSON.parse(ns.read(config))
@@ -49,6 +49,34 @@ export async function main(ns) {
         var cur_time = ns.getTimeSinceLastAug()
         var my_hacklvl = ns.getHackingLevel()
 
+        function try_get_root_access(target) {
+            if (!ns.hasRootAccess(target)) {
+                if (my_hacklvl < get_hack_level(target)) {
+                    return false
+                }
+                if (ns.fileExists("BruteSSH.exe")) {
+                    ns.brutessh(target)
+                }
+                if (ns.fileExists("FTPCrack.exe")) {
+                    ns.ftpcrack(target)
+                }
+                if (ns.fileExists("relaySMTP.exe")) {
+                    ns.relaysmtp(target)
+                }
+                if (ns.fileExists("HTTPWorm.exe")) {
+                    ns.httpworm(target)
+                }
+                if (ns.fileExists("SQLInject.exe")) {
+                    ns.sqlinject(target)
+                }
+                try {
+                    ns.nuke(target)
+                } catch (e) {}
+                return ns.hasRootAccess(target)
+            }
+            return true
+        }
+
         if (cur_time > time_to_load_config) {
             if (!ns.fileExists(pargs.config)) {
                 ns.tprint("Cannot read config file: " + pargs.config)
@@ -58,7 +86,6 @@ export async function main(ns) {
 
             try {
                 var cfg = loadcfg(ns, pargs.config)
-                var servers = cfg.servers
                 var tmp_path = cfg.tmp_path
                 var growratio = cfg.growratio
                 var use_targets = cfg.use_targets || false
@@ -93,6 +120,9 @@ export async function main(ns) {
         }
         if (cfg.servers) {
             for (var k in cfg.servers) {
+                if (!try_get_root_access(k)) {
+                    continue
+                }
                 var v = cfg.servers[k]
                 var gsr = ns.getServerRam(v)
                 ramlimits[v] = gsr[0] - gsr[1]
@@ -104,7 +134,7 @@ export async function main(ns) {
             if (!(target in jobs)) {
                 jobs[target] = { "state": "idle" }
             }
-            if (use_targets && ns.hasRootAccess(target)) {
+            if (try_get_root_access(target) && use_targets) {
                 var gsr = ns.getServerRam(target)
                 ramlimits[target] = gsr[0] - gsr[1]
                 maxrams[target] = gsr[0]
@@ -146,30 +176,7 @@ export async function main(ns) {
                 continue
             }
             if (!ns.hasRootAccess(target)) {
-                if (my_hacklvl < get_hack_level(target)) {
-                    continue
-                }
-                if (ns.fileExists("BruteSSH.exe")) {
-                    ns.brutessh(target)
-                }
-                if (ns.fileExists("FTPCrack.exe")) {
-                    ns.ftpcrack(target)
-                }
-                if (ns.fileExists("relaySMTP.exe")) {
-                    ns.relaysmtp(target)
-                }
-                if (ns.fileExists("HTTPWorm.exe")) {
-                    ns.httpworm(target)
-                }
-                if (ns.fileExists("SQLInject.exe")) {
-                    ns.sqlinject(target)
-                }
-                try {
-                    ns.nuke(target)
-                } catch (e) {}
-                if (!ns.hasRootAccess(target)) {
-                    continue
-                }
+                continue
             }
 
             var ram_avail = get_ram_avail()
