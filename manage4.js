@@ -12,6 +12,9 @@ function loadcfg(ns, config) {
     if (!cfg.targets) {
         throw ".targets must be specified as array of hostname/ip"
     }
+    if (!cfg.hackratio) {
+        cfg.hackratio = cfg.growratio
+    }
     return cfg
 }
 
@@ -81,16 +84,19 @@ export async function main(ns) {
             }
         }
 
+        var maxrams = {}
         var ramlimits = {}
         if (home_reserve !== undefined) {
             var gsr = ns.getServerRam("home")
             ramlimits.home = Math.max(gsr[0] - gsr[1] - home_reserve, 0)
+            maxrams.home = Math.max(gsr[0] - home_reserve, 0)
         }
         if (cfg.servers) {
             for (var k in cfg.servers) {
                 var v = cfg.servers[k]
                 var gsr = ns.getServerRam(v)
                 ramlimits[v] = gsr[0] - gsr[1]
+                maxrams[v] = gsr[0]
             }
         }
         for (var k in cfg.targets) {
@@ -101,6 +107,7 @@ export async function main(ns) {
             if (use_targets && ns.hasRootAccess(target)) {
                 var gsr = ns.getServerRam(target)
                 ramlimits[target] = gsr[0] - gsr[1]
+                maxrams[target] = gsr[0]
             }
         }
         for (var target in jobs) {
@@ -180,8 +187,9 @@ export async function main(ns) {
             } else {
                 mode = "hack"
             }
-            var th_grow = Math.ceil(ns.growthAnalyze(target, growratio))
-            var effgr = growratio
+
+            var effgr = mode == "hack" ? cfg.hackratio : growratio
+            var th_grow = Math.ceil(ns.growthAnalyze(target, effgr))
             var old_th_grow = th_grow
             var headroom = mode == "hack" ? 0.6 : 0.9
             if (cfg.hack_during_grow && mode == "grow") {
@@ -225,10 +233,10 @@ export async function main(ns) {
             }
 
             var global_id = global_filler_id++
-            if (0 === ns.exec(sc_weak, server, th_weak, target, global_id)) {
-                ns.tprint(sprintf("Failed to exec weak(%s,%s,%s,%s)", sc_weak, server, th_weak, target))
-                return
-            }
+                if (0 === ns.exec(sc_weak, server, th_weak, target, global_id)) {
+                    ns.tprint(sprintf("Failed to exec weak(%s,%s,%s,%s)", sc_weak, server, th_weak, target))
+                    return
+                }
             if (th_grow > 0 && 0 === ns.exec(sc_grow, server, th_grow, target, global_id)) {
                 ns.tprint("Failed to exec grow")
                 return
@@ -271,6 +279,10 @@ export async function main(ns) {
                 var fillerram = ns.getScriptRam(script)
                 for (var k in ramlimits) {
                     var v = ramlimits[k]
+                    if (v < maxrams[k]) {
+                        // Only use inactive servers
+                        continue
+                    }
                     var th = Math.floor(v / fillerram)
                     if (th > 0) {
                         if (!ns.fileExists(script, k)) {
@@ -293,7 +305,7 @@ export async function main(ns) {
                 sleep_until = Math.min(sleep_until, job.completedAt + 500)
             }
         }
-        
+
         var n = sleep_until - ns.getTimeSinceLastAug()
         await ns.sleep(Math.max(500, Math.min(n + 500, 3000)))
     }
