@@ -120,10 +120,10 @@ export async function main(ns) {
         }
         if (cfg.servers) {
             for (var k in cfg.servers) {
-                if (!try_get_root_access(k)) {
+                var v = cfg.servers[k]
+                if (!try_get_root_access(v)) {
                     continue
                 }
-                var v = cfg.servers[k]
                 var gsr = ns.getServerRam(v)
                 ramlimits[v] = gsr[0] - gsr[1]
                 maxrams[v] = gsr[0]
