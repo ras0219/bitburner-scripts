@@ -32,7 +32,7 @@ function buy_biggest_server(ns, server_list) {
         var new_server_object = { server_ram: largest_memory_buyable, state: "idle", waiting_to_sell: false }
         server_list.set(new_server, new_server_object)
     } else {
-        ns.tprint("New server purchase failed: ns.purchaseServer("+PURCHASE_NAME+", "+largest_memory_buyable+")")
+        ns.tprint("New server purchase failed: ns.purchaseServer(" + PURCHASE_NAME + ", " + largest_memory_buyable + ")")
     }
     return;
 }
@@ -90,7 +90,7 @@ function manage_servers(ns, server_list) {
     }
     ns.print("Asking system to delete + " + smallest_server)
 
-    if(smallest_ram == ns.getPurchasedServerMaxRam()) {
+    if (smallest_ram == ns.getPurchasedServerMaxRam()) {
         return
     }
     // if not we need to DELETE the smallest server 
@@ -225,7 +225,7 @@ export async function main(ns) {
                     var gsr = ns.getServerRam(v)
                     ramlimits[v] = gsr[0] - gsr[1]
                     maxrams[v] = gsr[0]
-                } catch (e) { /* This handles the case when the server does not exist */}
+                } catch (e) { /* This handles the case when the server does not exist */ }
             }
         }
         for (var k in cfg.targets) {
