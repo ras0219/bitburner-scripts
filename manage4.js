@@ -120,13 +120,15 @@ export async function main(ns) {
         }
         if (cfg.servers) {
             for (var k in cfg.servers) {
-                var v = cfg.servers[k]
-                if (!try_get_root_access(v)) {
-                    continue
-                }
-                var gsr = ns.getServerRam(v)
-                ramlimits[v] = gsr[0] - gsr[1]
-                maxrams[v] = gsr[0]
+                try {
+                    var v = cfg.servers[k]
+                    if (!try_get_root_access(v)) {
+                        continue
+                    }
+                    var gsr = ns.getServerRam(v)
+                    ramlimits[v] = gsr[0] - gsr[1]
+                    maxrams[v] = gsr[0]
+                } catch (e) { /* This handles the case when the server does not exist */}
             }
         }
         for (var k in cfg.targets) {
