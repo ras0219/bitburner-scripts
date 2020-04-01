@@ -231,20 +231,31 @@ ServerManager.prototype.check_servers = function(cfg, rootaccessor) {
             }
         }
     }
-    for (var k in servers) {
-        var s = servers[k]
+    for (var k in this.servers) {
+        var s = this.servers[k]
         s.evicts = []
         s.freeram = s.ramlimit
         var procs = this.ns.ps(k)
         for (var i in procs) {
             var proc = procs[i]
-            if (proc.args.contains(CANCEL_ARGUMENT)) {
+            if (proc.args.includes(CANCEL_ARGUMENT)) {
                 proc.ram = this.ns.getScriptRam(proc.filename, k) * proc.threads
                 s.ramlimit += proc.ram
                 s.evicts.push(proc)
             }
         }
-        s.evicts.sort(function(a,b) { return a.ram - b.ram })
+        var self = this
+        s.evicts.sort(function(a,b) {
+            var d = a.ram - b.ram
+            try {
+                if (d == 0) {
+                    return b.args[b.args.length-2] - a.args[a.args.length-2]
+                }
+            } catch (e) {
+                self.ns.print("Error while sorting: " + e)
+            }
+            return d
+        })
     }
 }
 
@@ -264,8 +275,8 @@ ServerManager.prototype.filler = function(cfg) {
                     args.splice(1, 0, k, th)
                     args.push(global_filler_id++)
                     args.push(CANCEL_ARGUMENT)
-                    if (0 === this.ns.exec.apply(ns, args)) {
-                        ns.tprint(sprintf("Failed to exec filler(%s,%s,%s,...)", script, k, th))
+                    if (0 === this.ns.exec.apply(this.ns, args)) {
+                        this.ns.tprint(sprintf("Failed to exec filler(%s,%s,%s,...)", script, k, th))
                     }
                 }
             }
@@ -275,8 +286,8 @@ ServerManager.prototype.filler = function(cfg) {
 
 ServerManager.prototype.get_ram_avail = function() {
     var r = 0
-    for (var k in servers) {
-        r = Math.max(r, servers[k].ramlimit)
+    for (var k in this.servers) {
+        r = Math.max(r, this.servers[k].ramlimit)
     }
     return r
 }
@@ -284,14 +295,15 @@ ServerManager.prototype.get_ram_avail = function() {
 ServerManager.prototype.select_server = async function(ram) {
     var r = 1e30
     var s = undefined
-    for (var k in servers) {
-        if (servers[k].ramlimit >= ram && r > servers[k].ramlimit) {
-            r = servers[k].ramlimit
+    for (var k in this.servers) {
+        var v = this.servers[k]
+        if (v.ramlimit >= ram && r > v.ramlimit) {
+            r = v.ramlimit
             s = k
         }
     }
     if (s) {
-        var server = servers[s]
+        var server = this.servers[s]
         if (server.freeram < ram) {
             while (server.freeram < ram && server.evicts.length > 0) {
                 // Must evict processes to free up ram
@@ -331,7 +343,7 @@ HackTasks.prototype.refresh_tasks = function(cfg, rootaccessor) {
     }
 }
 
-HackTasks.prototype.schedule = function(cfg, servermgr) {
+HackTasks.prototype.schedule = async function(cfg, servermgr) {
     for (var k in cfg.targets) {
         var target = cfg.targets[k]
         if (!(target in this.jobs)) {
@@ -341,8 +353,6 @@ HackTasks.prototype.schedule = function(cfg, servermgr) {
         if (job.state == "running") {
             continue
         }
-
-        var ram_avail = servermgr.get_ram_avail()
 
         var minsec = get_minsec(this.ns, target)
         var maxmon = get_maxmon(this.ns, target)
@@ -358,33 +368,55 @@ HackTasks.prototype.schedule = function(cfg, servermgr) {
             mode = "hack"
         }
 
-        var effgr = mode == "hack" ? cfg.hackratio : (growratio ? Math.min(growratio, maxmon/curmon) : maxmon/curmon)
+        var ram_avail = servermgr.get_ram_avail()
+
+        var sc_weak_ram = this.ns.getScriptRam(cfg.sc_weak)
+        var sc_grow_ram = this.ns.getScriptRam(cfg.sc_grow)
+        var pth_weak = (cursec - minsec) / 0.05
+        if (ram_avail > sc_weak_ram * pth_weak * 10) {
+            // If we have way more ram than required, skip directly to 'grow' mode
+            mode = "grow"
+        }
+
+        if (mode == "hack") {
+            var effgr = cfg.hackratio
+        } else {
+            var full_ratio = maxmon/curmon
+            if (cfg.hack_during_grow) {
+                full_ratio *= cfg.hackratio
+            }
+            var effgr = cfg.growratio ? Math.min(cfg.growratio, full_ratio) : full_ratio
+        }
         var th_grow = Math.ceil(this.ns.growthAnalyze(target, effgr))
         var old_th_grow = th_grow
         var headroom = mode == "hack" ? 0.6 : 0.9
         if (cfg.hack_during_grow && mode == "grow") {
             headroom = 0.75
         }
-        th_grow = Math.min(th_grow, Math.floor(ram_avail * headroom / this.ns.getScriptRam(cfg.sc_grow)))
+        th_grow = Math.min(th_grow, Math.floor(ram_avail * headroom / sc_grow_ram))
         effgr = Math.pow(effgr, th_grow / old_th_grow)
         if (mode == "weaken") {
             th_grow = 0
         }
-        var hack_money = curmon * (effgr - 1) / effgr
+
+        if (cfg.hack_during_grow && mode == "grow") {
+            var hackgr = Math.min(Math.sqrt(effgr), cfg.hackratio)
+            var hack_money = curmon * (hackgr - 1) / hackgr
+        } else {
+            var hack_money = curmon * (effgr - 1) / effgr
+        }
+
         var th_hack = Math.floor(this.ns.hackAnalyzeThreads(target, hack_money))
         if (cfg.hack_during_grow && mode == "grow") {
-            th_hack = Math.floor(th_hack / 2)
         } else if (mode != "hack") {
             th_hack = 0
         }
-        var th_weak = Math.ceil((th_hack * 0.002 + th_grow * 0.004) / 0.05)
-        if (mode == "weaken") {
-            th_weak = Math.ceil((cursec - minsec) / 0.05)
-            th_weak = Math.min(th_weak, Math.floor(ram_avail / this.ns.getScriptRam(cfg.sc_weak)))
-        }
+        var th_weak = Math.ceil((th_hack * 0.002 + th_grow * 0.004 + cursec - minsec) / 0.05)
+        th_weak = Math.min(th_weak, Math.floor(ram_avail / sc_weak_ram))
+
         var ram_hack = th_hack * this.ns.getScriptRam(cfg.sc_hack)
-        var ram_grow = th_grow * this.ns.getScriptRam(cfg.sc_grow)
-        var ram_weak = th_weak * this.ns.getScriptRam(cfg.sc_weak)
+        var ram_grow = th_grow * sc_grow_ram
+        var ram_weak = th_weak * sc_weak_ram
         var req_ram = ram_hack + ram_grow + ram_weak
 
         this.ns.print(">>> Required RAM: " + req_ram + " (" + [ram_hack, ram_grow, ram_weak] + ")")
@@ -434,7 +466,7 @@ HackTasks.prototype.schedule = function(cfg, servermgr) {
             this.ns.tprint("Failed to parse time from weaken logs for " + target)
             return
         }
-        job.completedAt = this.ns.getTimeSinceLastAug() + time + 500
+        job.completedAt = this.ns.getTimeSinceLastAug() + time
         if (th_hack > 0) {
             this.ns.print(sprintf(">>> Money rate for %20s: $/s = %1.2e    $/GBs = %1.2e",
                 target,
@@ -442,6 +474,17 @@ HackTasks.prototype.schedule = function(cfg, servermgr) {
                 hack_money * 1000 / time / req_ram))
         }
     }
+}
+
+HackTasks.prototype.next_event = function() {
+    var next = 1e99
+    for (var target in this.jobs) {
+        var job = this.jobs[target]
+        if (job.state == "running") {
+            next = Math.min(next, job.completedAt)
+        }
+    }
+    return next
 }
 
 export async function main(ns) {
@@ -480,8 +523,8 @@ export async function main(ns) {
 
         var rootaccessor = new RootAccessor(ns)
         server_mgr.check_servers(cfg, rootaccessor)
-        hack_tasks.refresh_tasks(cfg)
-        hack_tasks.schedule(cfg, server_mgr)
+        hack_tasks.refresh_tasks(cfg, rootaccessor)
+        await hack_tasks.schedule(cfg, server_mgr)
         server_mgr.filler(cfg)
 
         if (cfg.manage_servers) {
@@ -507,13 +550,7 @@ export async function main(ns) {
                 }
             }
         }
-        var sleep_until = time_to_load_config
-        for (var target in jobs) {
-            var job = jobs[target]
-            if (job.state == "running") {
-                sleep_until = Math.min(sleep_until, job.completedAt + 500)
-            }
-        }
+        var sleep_until = Math.min(time_to_load_config, hack_tasks.next_event())
 
         var n = sleep_until - ns.getTimeSinceLastAug()
         await ns.sleep(Math.max(500, Math.min(n + 500, 3000)))
