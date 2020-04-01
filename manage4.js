@@ -17,6 +17,101 @@ function loadcfg(ns, config) {
     }
     return cfg
 }
+const PURCHASE_NAME = "AUTOSERVER"
+
+function buy_biggest_server(ns, server_list) {
+    var money_available = ns.getServerMoneyAvailable("home") - 1000000
+    // note we check game to see if we have max server, not our app
+    // cost per 1GB is 55k, so money_available / 55k =>num of cores we can get, and we need to round down to pow of 2
+    var largest_memory_buyable = (Math.pow(2, Math.floor(Math.log(money_available / 55000) / Math.log(2))))
+    if (largest_memory_buyable > ns.getPurchasedServerMaxRam()) {
+        largest_memory_buyable = ns.getPurchasedServerMaxRam()
+    }
+    var new_server = ns.purchaseServer(PURCHASE_NAME, largest_memory_buyable)
+    if (new_server !== "") {
+        var new_server_object = { server_ram: largest_memory_buyable, state: "idle", waiting_to_sell: false }
+        server_list.set(new_server, new_server_object)
+    } else {
+        ns.tprint("New server purchase failed: ns.purchaseServer(" + PURCHASE_NAME + ", " + largest_memory_buyable + ")")
+    }
+    return;
+}
+
+/// SERVER:
+///    server_ram: TOTAL_RAM
+///    state: busy, idle, 
+///    WAITING_TO_SELL: true, false
+// Figures out if we can BUY MORE AND BETTER SERVERS
+function manage_servers(ns, server_list) {
+    var money_available = ns.getServerMoneyAvailable("home") - 1000000
+    if (money_available <= 1000000) {
+        // early game, return if less then 1M (+1mil/server)
+        return
+    }
+
+    // first we check if we are trying to sell a server, and what's the smallest server is.
+    var smallest_ram = 1e50
+    var smallest_server = ""
+
+    for (var best_server of server_list) {
+        if (best_server[1].server_ram < smallest_ram) {
+            smallest_ram = best_server[1].server_ram
+            smallest_server = best_server[0]
+        }
+    }
+
+    if (smallest_server !== "") {
+        if (server_list.get(smallest_server).waiting_to_sell === true) {
+            var able_to_sell = ns.deleteServer(smallest_server)
+            if (able_to_sell === false) {
+                // we need to wait for that zombie to die first, can't do anything with it zombie
+                return
+            }
+            ns.print("Success deleting + " + smallest_server)
+            server_list.delete(smallest_server)
+        }
+    }
+
+    if (smallest_server === "") {
+        // if we have no servers then buy largest server we can
+        buy_biggest_server(ns, server_list)
+        return
+    }
+    // next we check what the smallest ram server cost.
+    // if our money is <2x the smallest ram server cost we do nothing
+    if (ns.getPurchasedServerCost(smallest_ram * 2) > money_available) {
+        return
+    }
+
+    //next we check if we CAN just buy a bigger server
+    if (ns.getPurchasedServers().length < (ns.getPurchasedServerLimit() - 2)) {
+        buy_biggest_server(ns, server_list)
+        return
+    }
+    ns.print("Asking system to delete + " + smallest_server)
+
+    if (smallest_ram == ns.getPurchasedServerMaxRam()) {
+        return
+    }
+    // if not we need to DELETE the smallest server 
+    server_list.get(smallest_server).waiting_to_sell = true
+}
+
+function detect_existing_servers(ns) {
+    var owned_servers = new Map() //string as name, object as value
+
+    var servers_bought = ns.getPurchasedServers()
+    for (var one_server of servers_bought) {
+        if (one_server.substring(0, PURCHASE_NAME.length) == PURCHASE_NAME) {
+            var a = ns.getServerRam(one_server)[0]
+            var new_server_object = { "server_ram": a, "state": "idle", "waiting_to_sell": false }
+            owned_servers.set(one_server, new_server_object)
+            ns.killall(one_server)
+        }
+    }
+
+    return owned_servers
+}
 
 export async function main(ns) {
     var schema = {
@@ -44,6 +139,8 @@ export async function main(ns) {
     }
 
     var time_to_load_config = 0
+    var owned_servers = detect_existing_servers(ns)
+
     var jobs = {}
     do {
         var cur_time = ns.getTimeSinceLastAug()
@@ -128,7 +225,7 @@ export async function main(ns) {
                     var gsr = ns.getServerRam(v)
                     ramlimits[v] = gsr[0] - gsr[1]
                     maxrams[v] = gsr[0]
-                } catch (e) { /* This handles the case when the server does not exist */}
+                } catch (e) { /* This handles the case when the server does not exist */ }
             }
         }
         for (var k in cfg.targets) {
@@ -307,6 +404,30 @@ export async function main(ns) {
                 }
             }
         } catch (e) {}
+
+        if (cfg.manage_servers) {
+            manage_servers(ns, owned_servers)
+
+            for (var i of owned_servers) {
+                if (cfg.training == undefined) {
+                    throw ".manage_servers requires .training";
+                }
+                if (i[1].waiting_to_sell) {
+                    ns.killall(i[0])
+                } else {
+                    if (!ns.fileExists(cfg.training, i[0])) {
+                        ns.scp(cfg.training, i[0])
+                    }
+                    if (i[1].state !== "run") {
+                        var threads_run = Math.floor(i[1].server_ram / ns.getScriptRam(cfg.training));
+                        if (0 === ns.exec(cfg.training, i[0], threads_run)) {
+                            ns.tprint(sprintf("Failed to exec training(%s,%s,%s,...)", cfg.training, i[0], threads_run))
+                        }
+                        i[1].state = "run"
+                    }
+                }
+            }
+        }
         var sleep_until = time_to_load_config
         for (var target in jobs) {
             var job = jobs[target]
