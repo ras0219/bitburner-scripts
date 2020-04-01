@@ -1,10 +1,26 @@
 {
-    "servers": [],
-    "home_reservation": 3,
-    "growratio": 20,
+    "servers": [
+    "I.I.I.I", "avmnite-02h", "CSEC", "run4theh111z"
+    ,"autoserver"
+    ,"autoserver-0"
+    ,"autoserver-1"
+    ,"autoserver-2"
+    ,"autoserver-3"
+    ,"autoserver-4"
+    ,"autoserver-5"
+    ,"autoserver-6"
+    ,"autoserver-7"
+    ,"autoserver-8"
+    ,"autoserver-9"
+    ],
+    "home_reserve": 2.95,
+    "growratio": 1000000,
+    "hackratio": 2,
     "use_targets": true,
     "hack_during_grow": true,
-    "filler": [],
+    "filler": ["training3.ns", "joesguns", 100],
+    "manage_servers": false,
+    "training": "trainingloop.ns",
     "targets": [
         "foodnstuff", "sigma-cosmetics", "joesguns",
         "hong-fang-tea", "harakiri-sushi",

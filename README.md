@@ -8,6 +8,8 @@ Scripts for the BitBurner programming game: https://danielyxie.github.io/bitburn
 >
 > $ wget https://raw.githubusercontent.com/ras0219/bitburner-scripts/master/manage4.js manage4.ns
 >
+> $ wget https://raw.githubusercontent.com/ras0219/bitburner-scripts/master/training3.js training3.ns
+>
 > $ wget https://raw.githubusercontent.com/ras0219/bitburner-scripts/master/sample-config.json config.txt
 >
 > $ run manage4.ns config.txt
