@@ -256,6 +256,7 @@ ServerManager.prototype.check_servers = function(cfg, rootaccessor) {
             }
             return d
         })
+        s.ramlimit = Math.min(s.ramlimit, s.maxram)
     }
 }
 
@@ -372,6 +373,7 @@ HackTasks.prototype.schedule = async function(cfg, servermgr) {
 
         var sc_weak_ram = this.ns.getScriptRam(cfg.sc_weak)
         var sc_grow_ram = this.ns.getScriptRam(cfg.sc_grow)
+        var sc_hack_ram = this.ns.getScriptRam(cfg.sc_hack)
         var pth_weak = (cursec - minsec) / 0.05
         if (ram_avail > sc_weak_ram * pth_weak * 10) {
             // If we have way more ram than required, skip directly to 'grow' mode
@@ -387,11 +389,11 @@ HackTasks.prototype.schedule = async function(cfg, servermgr) {
             }
             var effgr = cfg.growratio ? Math.min(cfg.growratio, full_ratio) : full_ratio
         }
-        var th_grow = Math.ceil(this.ns.growthAnalyze(target, effgr))
-        var old_th_grow = th_grow
+        var old_th_grow = this.ns.growthAnalyze(target, effgr)
+        var th_grow = Math.ceil(old_th_grow)
         var headroom = mode == "hack" ? 0.6 : 0.9
         if (cfg.hack_during_grow && mode == "grow") {
-            headroom = 0.75
+            headroom = 0.7
         }
         th_grow = Math.min(th_grow, Math.floor(ram_avail * headroom / sc_grow_ram))
         effgr = Math.pow(effgr, th_grow / old_th_grow)
@@ -408,13 +410,14 @@ HackTasks.prototype.schedule = async function(cfg, servermgr) {
 
         var th_hack = Math.floor(this.ns.hackAnalyzeThreads(target, hack_money))
         if (cfg.hack_during_grow && mode == "grow") {
+            th_hack = Math.min(th_hack, Math.floor(ram_avail * 0.2 / sc_hack_ram))
         } else if (mode != "hack") {
             th_hack = 0
         }
         var th_weak = Math.ceil((th_hack * 0.002 + th_grow * 0.004 + cursec - minsec) / 0.05)
         th_weak = Math.min(th_weak, Math.floor(ram_avail / sc_weak_ram))
 
-        var ram_hack = th_hack * this.ns.getScriptRam(cfg.sc_hack)
+        var ram_hack = th_hack * sc_hack_ram
         var ram_grow = th_grow * sc_grow_ram
         var ram_weak = th_weak * sc_weak_ram
         var req_ram = ram_hack + ram_grow + ram_weak
