@@ -18,7 +18,7 @@
     "hackratio": 2,
     "use_targets": true,
     "hack_during_grow": true,
-    "filler": ["training3.ns", "joesguns", 100],
+    "filler": ["training3.ns", "joesguns"],
     "manage_servers": false,
     "training": "trainingloop.ns",
     "targets": [

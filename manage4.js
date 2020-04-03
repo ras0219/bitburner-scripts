@@ -205,6 +205,9 @@ ServerManager.prototype.check_servers = function(cfg, rootaccessor) {
             "maxram": Math.max(gsr[0] - cfg.home_reserve, 0)
         }
     }
+    if (cfg.manage_server_prefix) {
+        this.buysell_servers(cfg)
+    }
     if (cfg.servers) {
         for (var k in cfg.servers) {
             try {
@@ -256,6 +259,68 @@ ServerManager.prototype.check_servers = function(cfg, rootaccessor) {
             }
             return d
         })
+    }
+}
+
+ServerManager.prototype.buysell_servers = function(cfg) {
+    var servers_bought = this.ns.getPurchasedServers()
+    var servers_with_ram = []
+    for (var i = 0; i < servers_bought.length;++i) {
+        var v = servers_bought[k]
+        if (v.substring(0, cfg.manage_server_prefix.length) == cfg.manage_server_prefix) {
+            servers_with_ram.push({ "name": k, "ram": this.ns.getServerRam(servers_bought[k])})
+        }
+    }
+
+    if (cfg.manage_server_count || cfg.manage_server_reserve) {
+        if (!cfg.manage_server_count || !cfg.manage_server_reserve || !cfg.manage_server_prefix) {
+            this.ns.tprint(".manage_server_count and .manage_server_reserve are required together")
+            return
+        }
+        // minimum server size to buy is 256 GB
+        var money_available = Math.max(1, this.ns.getServerMoneyAvailable("home") - cfg.manage_server_reserve)
+        var largest_memory_buyable = Math.pow(2, Math.floor(Math.log(money_available / 55000) / Math.log(2)))
+        var purchase_maxram = this.ns.getPurchasedServerMaxRam()
+        if (largest_memory_buyable > purchase_maxram) {
+            largest_memory_buyable = purchase_maxram
+        }
+
+        if (largest_memory_buyable && cfg.manage_server_count > 0) {
+            var should_purchase = true
+            if (servers_with_ram.length >= cfg.manage_server_count) {
+                // too many servers -- potentially need to purge some
+                servers_with_ram.sort(function (a,b) { return a.ram[0] - b.ram[0] })
+                var ram_to_beat = servers_with_ram[0].ram[0]
+                if (ram_to_beat < largest_memory_buyable) {
+                    // the "new" server will be better than all previous ones
+                    this.ns.killall(servers_with_ram[i].name)
+                    if (!this.ns.deleteServer(servers_with_ram[i].name)) {
+                        // failed to delete, so delay purchase
+                        should_purchase = false
+                    }
+                    // remove the servers from the list so no more jobs will be scheduled
+                    servers_with_ram.splice(0, 1)
+                } else {
+                    should_purchase = false
+                }
+            }
+            if (should_purchase) {
+                var new_server = this.ns.purchaseServer(cfg.manage_server_prefix, largest_memory_buyable)
+                if (new_server !== "") {
+                    servers_with_ram.push({"name": new_server, "ram": this.ns.getServerRam(new_server)})
+                } else {
+                    this.ns.tprint("Error: New server purchase failed: ns.purchaseServer(" + cfg.manage_server_prefix + ", " + largest_memory_buyable + ")")
+                }
+            }
+        }
+    }
+
+    for (var k in servers_with_ram) {
+        var v = servers_with_ram[k]
+        this.servers[v.name] = {
+            "ramlimit": v.ram[0] - v.ram[1],
+            "maxram": v.ram[0]
+        }
     }
 }
 
@@ -381,7 +446,7 @@ HackTasks.prototype.schedule = async function(cfg, servermgr) {
         if (mode == "hack") {
             var effgr = cfg.hackratio
         } else {
-            var full_ratio = maxmon/curmon
+            var full_ratio = maxmon/Math.max(curmon, 1)
             if (cfg.hack_during_grow) {
                 full_ratio *= cfg.hackratio
             }
@@ -393,7 +458,7 @@ HackTasks.prototype.schedule = async function(cfg, servermgr) {
         if (cfg.hack_during_grow && mode == "grow") {
             headroom = 0.75
         }
-        th_grow = Math.min(th_grow, Math.floor(ram_avail * headroom / sc_grow_ram))
+        th_grow = Math.max(0, Math.min(th_grow, Math.floor(ram_avail * headroom / sc_grow_ram)))
         effgr = Math.pow(effgr, th_grow / old_th_grow)
         if (mode == "weaken") {
             th_grow = 0
@@ -406,13 +471,13 @@ HackTasks.prototype.schedule = async function(cfg, servermgr) {
             var hack_money = curmon * (effgr - 1) / effgr
         }
 
-        var th_hack = Math.floor(this.ns.hackAnalyzeThreads(target, hack_money))
+        var th_hack = Math.max(0, Math.floor(this.ns.hackAnalyzeThreads(target, hack_money)))
         if (cfg.hack_during_grow && mode == "grow") {
         } else if (mode != "hack") {
             th_hack = 0
         }
         var th_weak = Math.ceil((th_hack * 0.002 + th_grow * 0.004 + cursec - minsec) / 0.05)
-        th_weak = Math.min(th_weak, Math.floor(ram_avail / sc_weak_ram))
+        th_weak = Math.max(0, Math.min(th_weak, Math.floor(ram_avail / sc_weak_ram)))
 
         var ram_hack = th_hack * this.ns.getScriptRam(cfg.sc_hack)
         var ram_grow = th_grow * sc_grow_ram
