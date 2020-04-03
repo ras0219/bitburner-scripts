@@ -267,9 +267,9 @@ ServerManager.prototype.buysell_servers = function(cfg) {
     var servers_bought = this.ns.getPurchasedServers()
     var servers_with_ram = []
     for (var i = 0; i < servers_bought.length;++i) {
-        var v = servers_bought[k]
+        var v = servers_bought[i]
         if (v.substring(0, cfg.manage_server_prefix.length) == cfg.manage_server_prefix) {
-            servers_with_ram.push({ "name": k, "ram": this.ns.getServerRam(servers_bought[k])})
+            servers_with_ram.push({ "name": v, "ram": this.ns.getServerRam(v)})
         }
     }
 
