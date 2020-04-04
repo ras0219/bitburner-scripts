@@ -266,7 +266,7 @@ ServerManager.prototype.check_servers = function(cfg, rootaccessor) {
 ServerManager.prototype.buysell_servers = function(cfg) {
     var servers_bought = this.ns.getPurchasedServers()
     var servers_with_ram = []
-    for (var i = 0; i < servers_bought.length;++i) {
+    for (var i = 0; i < servers_bought.length; ++i) {
         var v = servers_bought[i]
         if (v.substring(0, cfg.manage_server_prefix.length) == cfg.manage_server_prefix) {
             servers_with_ram.push({ "name": v, "ram": this.ns.getServerRam(v)})
@@ -278,15 +278,15 @@ ServerManager.prototype.buysell_servers = function(cfg) {
             this.ns.tprint(".manage_server_count and .manage_server_reserve are required together")
             return
         }
-        // minimum server size to buy is 256 GB
         var money_available = Math.max(1, this.ns.getServerMoneyAvailable("home") - cfg.manage_server_reserve)
-        var largest_memory_buyable = Math.pow(2, Math.floor(Math.log(money_available / 55000) / Math.log(2)))
+        var buyable_gbs_fraction = money_available * 2 / this.ns.getPurchasedServerCost(2)
+        var largest_memory_buyable = Math.pow(2, Math.floor(Math.log(buyable_gbs_fraction) / Math.log(2)))
         var purchase_maxram = this.ns.getPurchasedServerMaxRam()
         if (largest_memory_buyable > purchase_maxram) {
             largest_memory_buyable = purchase_maxram
         }
 
-        if (largest_memory_buyable && cfg.manage_server_count > 0) {
+        if (largest_memory_buyable >= (cfg.manage_server_min_gb || 256) && cfg.manage_server_count > 0) {
             var should_purchase = true
             if (servers_with_ram.length >= cfg.manage_server_count) {
                 // too many servers -- potentially need to purge some
@@ -294,8 +294,8 @@ ServerManager.prototype.buysell_servers = function(cfg) {
                 var ram_to_beat = servers_with_ram[0].ram[0]
                 if (ram_to_beat < largest_memory_buyable) {
                     // the "new" server will be better than all previous ones
-                    this.ns.killall(servers_with_ram[i].name)
-                    if (!this.ns.deleteServer(servers_with_ram[i].name)) {
+                    this.ns.killall(servers_with_ram[0].name)
+                    if (!this.ns.deleteServer(servers_with_ram[0].name)) {
                         // failed to delete, so delay purchase
                         should_purchase = false
                     }
