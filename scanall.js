@@ -1,6 +1,6 @@
 // scanall.script
 
-const SPECIALS = ["CSEC", "avmnite-02h", "I.I.I.I", "run4theh111z", "The-Cave", "w0rld_d43m0n"]
+const SPECIALS = ["CSEC", "avmnite-02h", "I.I.I.I", "run4theh111z", "The-Cave", "w0r1d_d43m0n"]
 
 export async function main(ns) {
     var scanned = { "home": "" }
@@ -57,8 +57,11 @@ export async function main(ns) {
     }
 
     function path(n) {
+        if (n == "home") {
+            return "home"
+        }
         if (n in scanned) {
-            return path(scanned[n]) + "->" + n
+            return path(scanned[n]) + ";connect " + n
         }
         return n
     }
